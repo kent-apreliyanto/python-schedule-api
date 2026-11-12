@@ -1,24 +1,16 @@
-import sqlite3
-from fastapi import FastAPI
-from pydantic import BaseModel
+import os
+from dotenv import load_dotenv
+from fastapi import FastAPI, Header, HTTPException, Depends
+from database import conn, cursor
+from models import Schedule
 
+load_dotenv()
 app = FastAPI()
+SECRET_KEY = os.getenv("API_SECRET_KEY")
 
-conn = sqlite3.connect("schedule.db", check_same_thread=False)
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS schedules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    time TEXT NOT NULL,
-    activity TEXT
-)               
-""")
-conn.commit()
-
-class Schedule(BaseModel):
-    time: str
-    activity: str
+def verify_key(x_api_key: str = Header(None)):
+    if x_api_key != SECRET_KEY:
+        raise HTTPException(status_code=401, detail="Access denied! API Key is incorrect or missing.")
 
 @app.get("/")
 def read_root():
@@ -33,7 +25,7 @@ def get_all_schedules():
     
     return {"status": "success", "data": formatted_data}
 
-@app.post("/schedules")
+@app.post("/schedules", dependencies=[Depends(verify_key)])
 def create_schedule(new_item: Schedule):
     cursor.execute(
         "INSERT INTO schedules (time, activity) VALUES (?,?)",
@@ -42,7 +34,7 @@ def create_schedule(new_item: Schedule):
     conn.commit()
     return {"status": "success", "message": "schedule added"}
 
-@app.delete("/schedule/{schedule_id}")
+@app.delete("/schedule/{schedule_id}", dependencies=[Depends(verify_key)])
 def delete_schedule(schedule_id: int):
     cursor.execute(
         "DELETE FROM schedules WHERE id = ?", (schedule_id,)
@@ -50,7 +42,7 @@ def delete_schedule(schedule_id: int):
     conn.commit()
     return {"status": "success", "message": f"Schedule with ID {schedule_id} successfully deleted."}
 
-@app.put("/schedules/{schedule_id}")
+@app.put("/schedules/{schedule_id}", dependencies=[Depends(verify_key)])
 def update_schedule(schedule_id: int, update_item: Schedule):
     cursor.execute(
         "UPDATE schedules SET time = ?, activity = ? WHERE id = ?",
